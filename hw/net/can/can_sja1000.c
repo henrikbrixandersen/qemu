@@ -35,11 +35,11 @@
 #include "can_sja1000.h"
 
 #ifndef DEBUG_FILTER
-#define DEBUG_FILTER 0
+#define DEBUG_FILTER 1
 #endif /*DEBUG_FILTER*/
 
 #ifndef DEBUG_CAN
-#define DEBUG_CAN 0
+#define DEBUG_CAN 1
 #endif /*DEBUG_CAN*/
 
 #define DPRINTF(fmt, ...) \
@@ -499,6 +499,31 @@ void can_sja_mem_write(CanSJA1000State *s, hwaddr addr, uint64_t val,
                 s->status_pel &= ~(1 << 5);
                 s->interrupt_pel |= 0x02;
                 can_sja_update_pel_irq(s);
+            } else if (0x10 & val) { /* Self reception request. */
+                buff2frame_pel(s->tx_buff, &frame);
+                if (DEBUG_FILTER) {
+                    can_display_msg("[cansja]: Self Rx request " , &frame);
+                }
+
+                /*
+                 * Clear transmission complete status,
+                 * and Transmit Buffer Status.
+                 * write to self.
+                 */
+                s->status_pel &= ~(3 << 2);
+
+                can_sja_receive(&s->bus_client, &frame, 1);
+
+                /*
+                 * Set transmission complete status
+                 * and Transmit Buffer Status.
+                 */
+                s->status_pel |= (3 << 2);
+
+                /* Clear transmit status. */
+                s->status_pel &= ~(1 << 5);
+                s->interrupt_pel |= 0x02;
+                can_sja_update_pel_irq(s);
             }
             if (0x04 & val) { /* Release Receive Buffer */
                 if (s->rxmsg_cnt <= 0) {
@@ -604,6 +629,7 @@ void can_sja_mem_write(CanSJA1000State *s, hwaddr addr, uint64_t val,
                 s->interrupt_bas |= 0x02;
                 can_sja_update_bas_irq(s);
             }
+            /* TODO */
             if (0x04 & val) { /* Release Receive Buffer */
                 if (s->rxmsg_cnt <= 0) {
                     break;
